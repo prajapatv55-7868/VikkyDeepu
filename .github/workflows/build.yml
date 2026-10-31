@@ -13,16 +13,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Auto-Organize & Generate Complete Android Config
+      - name: Auto-Organize & Generate Clean Manifest + Gradle
         run: |
           mkdir -p app/src/main/res/values
 
-          # 1. Move any Manifest file to app/src/main/
-          find . -maxdepth 2 -iname "*Manifest*.xml" -exec cp -f {} app/src/main/AndroidManifest.xml \;
-
-          # 2. Move all .kt files into their exact package folder
+          # 1. Detect Package Name and MainActivity Name from .kt files
           PKG_NAME="com.example.safegallery"
-          for ktfile in *.kt; do
+          MAIN_ACT="MainActivity"
+
+          for ktfile in *.kt app/src/main/java/**/*.kt; do
             if [ -f "$ktfile" ]; then
               DETECTED_PKG=$(grep -m 1 "^package " "$ktfile" | awk '{print $2}' | tr -d '\r;')
               if [ -n "$DETECTED_PKG" ]; then
@@ -30,21 +29,49 @@ jobs:
               fi
               PKG_PATH=$(echo "$PKG_NAME" | tr '.' '/')
               mkdir -p "app/src/main/java/$PKG_PATH"
-              mv -f "$ktfile" "app/src/main/java/$PKG_PATH/"
+              cp -f "$ktfile" "app/src/main/java/$PKG_PATH/" 2>/dev/null || true
             fi
           done
+          rm -f *.kt
 
-          # 3. Clean any root gradle files so they don't conflict
-          rm -f *gradle*
+          # 2. Clean any corrupted root files
+          rm -f *gradle* AndroidManifest.xml
 
-          # 4. Clean missing icon/theme references in Manifest
-          if [ -f "app/src/main/AndroidManifest.xml" ]; then
-            sed -i 's/android:icon="[^"]*"//g' app/src/main/AndroidManifest.xml
-            sed -i 's/android:roundIcon="[^"]*"//g' app/src/main/AndroidManifest.xml
-            sed -i 's/android:theme="[^"]*"/android:theme="@android:style\/Theme.Material.Light.NoActionBar"/g' app/src/main/AndroidManifest.xml
-          fi
+          # 3. Generate a 100% Clean, Error-Free AndroidManifest.xml
+          cat << EOF > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:tools="http://schemas.android.com/tools">
 
-          # 5. Create guaranteed working app/build.gradle.kts
+              <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+              <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+              <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+              <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+
+              <application
+                  android:allowBackup="false"
+                  android:fullBackupContent="false"
+                  android:label="Safe Gallery"
+                  android:supportsRtl="true"
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          # 4. Generate app/build.gradle.kts
           cat << EOF > app/build.gradle.kts
           plugins {
               id("com.android.application")
@@ -101,7 +128,7 @@ jobs:
           }
           EOF
 
-          # 6. Create Root settings.gradle.kts
+          # 5. Create Root settings.gradle.kts
           cat << 'EOF' > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -121,7 +148,7 @@ jobs:
           include(":app")
           EOF
 
-          # 7. Create Root build.gradle.kts
+          # 6. Create Root build.gradle.kts
           cat << 'EOF' > build.gradle.kts
           plugins {
               id("com.android.application") version "8.4.2" apply false
@@ -130,7 +157,7 @@ jobs:
           }
           EOF
 
-          # 8. Create gradle.properties
+          # 7. Create gradle.properties
           cat << 'EOF' > gradle.properties
           android.useAndroidX=true
           org.gradle.jvmargs=-Xmx2048m
