@@ -13,32 +13,24 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Auto-Organize & Generate Clean Manifest + Gradle
+      - name: Clean Slate & Setup Fresh Android Project
         run: |
+          # 1. Clean up everything except .kt files and workflow
+          find . -maxdepth 1 ! -name '.' ! -name '.github' ! -name '*.kt' -exec rm -rf {} + 2>/dev/null || true
+
+          # 2. Create proper Android directory structure
+          mkdir -p app/src/main/java/com/example/safegallery
           mkdir -p app/src/main/res/values
 
-          # 1. Detect Package Name and MainActivity Name from .kt files
-          PKG_NAME="com.example.safegallery"
-          MAIN_ACT="MainActivity"
-
-          for ktfile in *.kt app/src/main/java/**/*.kt; do
+          # 3. Move all Kotlin files to the correct package directory
+          for ktfile in *.kt; do
             if [ -f "$ktfile" ]; then
-              DETECTED_PKG=$(grep -m 1 "^package " "$ktfile" | awk '{print $2}' | tr -d '\r;')
-              if [ -n "$DETECTED_PKG" ]; then
-                PKG_NAME="$DETECTED_PKG"
-              fi
-              PKG_PATH=$(echo "$PKG_NAME" | tr '.' '/')
-              mkdir -p "app/src/main/java/$PKG_PATH"
-              cp -f "$ktfile" "app/src/main/java/$PKG_PATH/" 2>/dev/null || true
+              mv -f "$ktfile" app/src/main/java/com/example/safegallery/
             fi
           done
-          rm -f *.kt
 
-          # 2. Clean any corrupted root files
-          rm -f *gradle* AndroidManifest.xml
-
-          # 3. Generate a 100% Clean, Error-Free AndroidManifest.xml
-          cat << EOF > app/src/main/AndroidManifest.xml
+          # 4. Generate a 100% Clean and Error-Free AndroidManifest.xml
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
               xmlns:tools="http://schemas.android.com/tools">
@@ -71,8 +63,8 @@ jobs:
           </manifest>
           EOF
 
-          # 4. Generate app/build.gradle.kts
-          cat << EOF > app/build.gradle.kts
+          # 5. Generate fresh app/build.gradle.kts
+          cat << 'EOF' > app/build.gradle.kts
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
@@ -80,11 +72,11 @@ jobs:
           }
 
           android {
-              namespace = "$PKG_NAME"
+              namespace = "com.example.safegallery"
               compileSdk = 34
 
               defaultConfig {
-                  applicationId = "$PKG_NAME"
+                  applicationId = "com.example.safegallery"
                   minSdk = 26
                   targetSdk = 34
                   versionCode = 1
@@ -128,7 +120,7 @@ jobs:
           }
           EOF
 
-          # 5. Create Root settings.gradle.kts
+          # 6. Generate Root Gradle files
           cat << 'EOF' > settings.gradle.kts
           pluginManagement {
               repositories {
@@ -148,7 +140,6 @@ jobs:
           include(":app")
           EOF
 
-          # 6. Create Root build.gradle.kts
           cat << 'EOF' > build.gradle.kts
           plugins {
               id("com.android.application") version "8.4.2" apply false
@@ -157,7 +148,6 @@ jobs:
           }
           EOF
 
-          # 7. Create gradle.properties
           cat << 'EOF' > gradle.properties
           android.useAndroidX=true
           org.gradle.jvmargs=-Xmx2048m
